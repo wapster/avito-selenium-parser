@@ -11,31 +11,62 @@ require_once('vendor/autoload.php');
 require_once('functions.php');
 require_once('settings.php');
 
-$driver = get_driver();
+empty_line();
+
+// Авторизация
+$account = get_random_account();
+$login = $account['login'];
+$password = $account['password'];
+$device = $account['device'];
+
+$driver = get_driver($device);
+authorization($driver, $login, $password);
 
 
-$profiles = [
-    // 'https://www.avito.ru/user/7ead3dd43a7382aca5b3718b3ec55472/profile',
-    // 'https://www.avito.ru/user/6fba0e8502f8418747a077e3aa8d7886/profile',
-    // 'https://avito.ru/user/8f7a08ae5bedbeba30625e9724501ab1/profile', /* >170 */
-    // 'https://m.avito.ru/user/5a3237a4c9853b7ae928dd3a3f75471f/profile' /* 21 */
-    'https://m.avito.ru/user/300929d3db1a82d2113f44c857aa069a/profile',   /* 4 */
-    // 'https://m.avito.ru/user/6c4cefbc4faa1d5ac294f7360d86d5d1/profile',
-];
+exit;
+
+// выбираем несколько случайных профилей
+$profiles = array_rand(array_flip(get_profiles_in_db()), 2);
+
+loginza("ITEMS");
+loginza("Старт парсинга объявлений из профилей пользователей");
+
+foreach ($profiles as $profile_hash) {
+    loginza("* " . $profile_hash);
+}
 
 foreach ($profiles as $profile_url) {
-
+    loginza("профиль: " . $profile_url);
+    // кол-во и список активных объявлений продавца
     $count_active_items = get_count_active_items($profile_url, $driver);
-    $list_active_items = get_list_active_items($profile_url, $count_active_items, $driver);
+    if ($count_active_items > 0):
+        $list_active_items = get_list_active_items($profile_url, $count_active_items, $driver);
 
-    foreach ($list_active_items as $item) {
-        // переходим в объявление
+        // список объявлений пользователя в базе данных
+        $profile_id = get_profile_id($profile_url);
+        $list_items_in_db = get_list_items_in_db($profile_id);
+        
+        // сравниваем массивы и возвращаем только те объявления,
+        // которых нет в базе данных
+        if ($list_items_in_db !== 'error') {
+            $items_for_add_in_db = array_values(array_diff($list_active_items, $list_items_in_db));
 
-        // парсим инф-ию
-
-        // записываем инф-ию об объявлении в базу
-
-    }
-
+            // если есть что добавить -> добавляем
+            if (count($items_for_add_in_db) > 0) {
+                foreach ($items_for_add_in_db as $item) {
+                    // Парсим информацию со страницы объявления
+                    $data_item = get_item_info ($item, $profile_id, $driver);
+                    
+                    if (count($data_item) > 0) {
+                        // записываем инф-ию об объявлении в базу
+                        item_insert_in_db($data_item);
+                    }
+                }
+            }
+        }
+    endif;
+    loginza("Парсинг объявлений продавца " . $profile_url . " завершен");
 
 }
+close_connect_db();
+close_browser($driver);

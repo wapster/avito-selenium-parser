@@ -1,5 +1,4 @@
 <?php
-
 namespace Facebook\WebDriver;
 
 use Facebook\WebDriver\Remote\DesiredCapabilities;
@@ -24,6 +23,12 @@ function loginza( $info ) {
     file_put_contents( $file, $date . $info . PHP_EOL, FILE_APPEND);
 }
 
+// добавляем пустую строку в лог-файл
+function empty_line() {
+    $file = 'log.txt';
+    file_put_contents( $file, PHP_EOL, FILE_APPEND);
+}
+
 
 function open_connect_db() {
     // Подключаемся к базе
@@ -45,18 +50,18 @@ function close_connect_db() {
     loginza("Соединение с БД закрыто");
 }
 
-
+/*
 function get_driver() {
     $host = 'http://localhost:4444';
     $options = new ChromeOptions();
     $options->addArguments(array(
         '–disable-extensions',
-        // 'start-maximized',
+        'start-maximized',
         'disable-popup-blocking',
         'test-type'
         ));
 
-    $devices = ['iPhone 6' /*, 'Nexus 5', 'Nexus 6', 'Nexus 7', 'Nokia N9'*/];
+    $devices = [ 'iPhone 6', 'Nexus 5', 'Nexus 6', 'Nexus 7', 'Nokia N9' ];
     $random_device = $devices[array_rand($devices)];
     $mobile_emulation = [ 'deviceName' => $random_device ];
     $options->setExperimentalOption('mobileEmulation', $mobile_emulation);
@@ -66,9 +71,29 @@ function get_driver() {
 
     return $driver;
 }
+*/
+
+function get_driver($device) {
+    $host = 'http://localhost:4444';
+    $options = new ChromeOptions();
+    $options->addArguments( [
+        '–disable-extensions',
+        'disable-popup-blocking',
+        // 'test-type'
+        // 'start-maximized',
+        ] );
+
+    $mobile_emulation = [ 'deviceName' => $device ];
+    $options->setExperimentalOption('mobileEmulation', $mobile_emulation);
+    $caps = DesiredCapabilities::chrome();
+    $caps->setCapability(ChromeOptions::CAPABILITY, $options);
+    $driver = RemoteWebDriver::create($host, $caps, 90000, 90000);
+
+    return $driver;
+}
 
 
-
+/*
 function get_random_account($accounts_list) {
     $i = array_rand($accounts_list);
     $random_account = $accounts_list[$i];
@@ -80,7 +105,25 @@ function get_random_account($accounts_list) {
 
     return $account;
 }
+*/
 
+// получить аккаунт
+function get_random_account() {
+    try {
+        $db = open_connect_db();
+        $sql = "SELECT * FROM `accounts`";
+        $accounts = $db->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+        $counter = count($accounts);
+        $index = rand(0, $counter - 1);
+        $account = $accounts[$index];
+        return $account;
+        loginza("Из БД получен список аккаунтов");
+    } catch (\PDOException $e) {
+        throw new \PDOException($e->getMessage(), (int)$e->getCode());
+        loginza("Ошибка при поиске объявлений в БД");
+        return $account = [];
+    }
+}
 
 // Авторизация в аккаунте
 function authorization($driver, $login, $password) {
@@ -97,7 +140,7 @@ function authorization($driver, $login, $password) {
     // ждем, пока прогрузится страница
     try {
         $driver->wait(10, 2000)->until( WebDriverExpectedCondition::titleContains('Авито') );
-        sleep(1);
+        sleep(5);
     } catch (Exception\WebDriverException $e) {
         loginza("Не удается загрузить сайт.");
         loginza($e);
@@ -107,7 +150,7 @@ function authorization($driver, $login, $password) {
     // клик для показа формы авторизации
     try {   
         $driver->findElement(WebDriverBy::xpath("//*[@id='modal']/div/div/div/div[2]"))->click();
-        sleep(1);
+        sleep(2);
     } catch (Exception\WebDriverException $e) {
         loginza("Не удается найти форму авторизации.");
         loginza($e);
@@ -118,7 +161,7 @@ function authorization($driver, $login, $password) {
     try {
         $loginInput = $driver->findElement(WebDriverBy::name("login"))->click();
         $loginInput->sendKeys($login);
-        sleep(1);
+        sleep(2);
     } catch (Exception\WebDriverException $e) {
         loginza("Не удается заполнить поле авторизации: ЛОГИН");
         loginza($e);
@@ -129,7 +172,7 @@ function authorization($driver, $login, $password) {
     try {
         $passwordInput = $driver->findElement(WebDriverBy::name("password"));
         $passwordInput->sendKeys($password);
-        sleep(1);
+        sleep(2);
     } catch (Exception\WebDriverException $e) {
         loginza("Не удается заполнить поле авторизации: ПАРОЛЬ");
         loginza($e);
@@ -150,6 +193,7 @@ function authorization($driver, $login, $password) {
     // Проверяем авторизацию
     try {
         // успешная авторизация
+        
     } catch(Exception\WebDriverException $e) {
         loginza("ОШИБКА Авторизации. Логин: " . $login);
         loginza("Проверить правильность Логина и\или Пароля");
@@ -189,6 +233,7 @@ function get_links_from_index_page($driver) {
     }
 
     return $urls;
+    loginza("Получены ссылки на объявления");
 }
 
 // получаем ссылку на профиль пользователя из его объявления
@@ -211,10 +256,11 @@ function get_profile_url ($url, $driver) {
             $profile = explode('?', $profile_url);
             $profile_id = $profile[0];
             return $profile_url;
+            loginza("ссылка на профиль получена " . $profile_url);
         }
     } catch (Exception\WebDriverException $e) {
         loginza("ОШИБКА получения ссылки на профиль пользователя");
-        loginza("URL: " . $url);
+        loginza("URL объявления: " . $url);
         loginza($e);
         // close_browser($driver);
         // $profile_url = 'Не удалось получить ссылку на профиль пользователя';
@@ -231,6 +277,7 @@ function get_profile_id ($profile_url) {
     $profile = explode('/', $profile_url);
     $profile_id = $profile[4];
     return $profile_id;
+    loginza("id профиля: " . $profile_id);
 }
 
 
@@ -239,26 +286,7 @@ function get_profiles_in_db() {
     $db = open_connect_db();
     $profiles_in_db = $db->query("SELECT url FROM `profiles`")->fetchAll(PDO::FETCH_COLUMN);
     return $profiles_in_db;
-}
-
-// проверяем, если ли профиль в БД
-function is_profile_in_db ($profile_url) {
-    $db = open_connect_db();
-    $profiles_in_db = $db->query("SELECT url FROM `profiles`")->fetchAll(PDO::FETCH_COLUMN);
-
-    $profile_url = [$profile_url]; // делаем массив для сравнения
-    var_dump($profile_url);
-    debug("");
-
-    $profile_for_add_in_db = array_values(array_diff($profile_url, $profiles_in_db));
-    
-    var_dump($profile_for_add_in_db);
-    debug("");
-
-    $counter = count($profile_for_add_in_db);
-    if ($counter > 0) {
-        return true;   // такой профиль уже есть в БД
-    } else return false; // профиля нет в БД
+    loginza("Из БД получены профили продавцов");
 }
 
 
@@ -291,14 +319,18 @@ function get_count_active_items ($profile_url, $driver) {
     try {
         $driver->get($profile_url);
         $driver->wait(10, 2000)->until( WebDriverExpectedCondition::titleContains('Профиль пользователя') );
-        sleep(3);
+        // $driver->wait(10, 1000)->until( WebDriverExpectedCondition::visibilityOfElementLocated(WebDriverBy::linkText("Реклама на сайте")));
+        sleep(5);
         $element = $driver->findElement(WebDriverBy::className("Nh2WO"))->findElements(WebDriverBy::tagName("div"));
         $counter = $element[0]->getText();
         $counter = filter_var($counter, FILTER_SANITIZE_NUMBER_INT);
         return (int)$counter;
+
+        loginza("Кол-во активных объявлений продавца: " . $profile_url .  " = " . $counter);
     } catch (Exception\WebDriverException $e) {
         loginza("ОШИБКА: получение кол-ва активных объявлений продавца");
         loginza($e);
+        return (int)$counter = 0;
     }
 }
 
@@ -307,9 +339,14 @@ function get_list_active_items($profile_url, $count_active_items, $driver) {
     try {
         $driver->get($profile_url);
         $driver->wait(10, 2000)->until( WebDriverExpectedCondition::titleContains('Профиль пользователя') );
-        sleep(3);
+        sleep(5);
 
-        $w = intdiv($count_active_items, 8) + 1; //кол-во скроллов вниз с учетом кол-ва объявлений продавца
+        if ($count_active_items > 128) {
+            $w = 16; // кол-во скроллов вниз, в мобильной версии показывается только 128 объявлений.
+        } else {
+            $w = intdiv($count_active_items, 8) + 1; //кол-во скроллов вниз с учетом кол-ва объявлений продавца
+        }
+
         $i = 0;
         while ( $i < $w ) {
             $driver->executeScript("window.scrollTo(0, document.body.scrollHeight)");
@@ -323,11 +360,116 @@ function get_list_active_items($profile_url, $count_active_items, $driver) {
             $list_active_items[] = $element->findElement(WebDriverBy::tagName("div"))->findElement(WebDriverBy::tagName("a"))->getAttribute("href");
         }
 
-        return (int)count($list_active_items);
+        return $list_active_items;
+        loginza("Список URL активных объявлений сформирован");
     } catch (Exception\WebDriverException $e) {
-        loginza("ОШИБКА: получение кол-ва активных объявлений продавца");
+        loginza("ОШИБКА: получение списка активных объявлений продавца");
         loginza($e);
+        return $list_active_items = [];
     }
 
     
+}
+
+
+
+// Парсим информацию со страницы объявления
+function get_item_info ($item, $profile_id, $driver) {
+    try {
+        // переходим в объявление
+        $driver->get($item);
+        sleep(rand(5,5));
+
+        // скроллим в самый низ
+        $driver->executeScript("window.scrollTo(0, document.body.scrollHeight)");
+        sleep(rand(4,4));
+
+
+        // ПАРСИМ ИНФ-ИЮ
+        
+        // url объявления
+        $url = $item;
+        
+        // id объявления
+        $item_id = explode("_", $url);
+        $item_id = array_pop($item_id);
+        
+        // id профиля
+        // $profile_id = get_profile_id($profile_url);
+        
+        // Заголовок объявления
+        $title = $driver->findElement(WebDriverBy::tagName("h1"))->getText();
+
+        // Описание объявления
+        $description = $driver->findElement(WebDriverBy::xpath("//*[@id='app']/div/div[2]/div/div[3]/div[1]/div/div"))->getText();
+
+        // Цена
+        $price = $driver->findElement(WebDriverBy::className("_3CnHz"))->getText();
+
+        // Адрес
+        $address = $driver->findElement(WebDriverBy::className("_20LXK"))->getText();
+
+        // Имя продавца
+        $name = $driver->findElement(WebDriverBy::className("bbujJ"))->getText();
+
+        // дата парсинга объявления
+        $date_scrape = date( 'Y-m-d' );
+
+        
+        $data['item_id'] = $item_id;
+        $data['profile_id'] = $profile_id;
+        $data['url'] = $url;
+        $data['title'] = $title;
+        $data['description'] = $description;
+        $data['price'] = $price;
+        $data['address'] = $address;
+        $data['name'] = $name;
+        $data['date_scrape'] = $date_scrape;
+        
+        return $data;
+        loginza("Страница с объявлением № " . $item_id. "спарсена");
+    } catch (Exception\WebDriverException $e) {
+        loginza("ОШИБКА при парсинге страницы с объявлением");
+        loginza($item);
+        loginza($e);
+        return $data = [];
+    }
+
+}
+
+
+// 
+function get_list_items_in_db($profile_id) {
+    try {
+        $db = open_connect_db();
+        $sql = "SELECT `url` FROM `items` WHERE `profile_id` = '$profile_id'";
+        $list_items_in_db = $db->query($sql)->fetchAll(PDO::FETCH_COLUMN);
+        return $list_items_in_db;
+        loginza("Из БД получен список объявлений пользователя");
+    } catch (\PDOException $e) {
+        throw new \PDOException($e->getMessage(), (int)$e->getCode());
+        loginza("Ошибка при поиске объявлений в БД");
+        return $list_items_in_db = 'error';
+    }
+
+}
+
+
+
+// запись инф-ции об объявлении в базу
+function item_insert_in_db($data) {
+    $sql = "INSERT INTO `items` 
+    (item_id, profile_id, url, title, description, price, address, name, date_scrape) 
+    VALUES 
+    (:item_id, :profile_id, :url, :title, :description, :price, :address, :name, :date_scrape)";
+
+    try {
+        $db = open_connect_db();
+        $stmt= $db->prepare($sql);
+        $stmt->execute($data);
+        loginza("Объявление добавлено в БД. ID - " . $data['item_id']);
+    } catch (\PDOException $e) {
+        throw new \PDOException($e->getMessage(), (int)$e->getCode());
+        loginza("Ошибка при добавлении объявления в БД");
+    }
 }
