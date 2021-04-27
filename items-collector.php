@@ -15,18 +15,19 @@ empty_line();
 
 // Авторизация
 $account = get_random_account();
+
 $login = $account['login'];
 $password = $account['password'];
 $device = $account['device'];
-
 $driver = get_driver($device);
 authorization($driver, $login, $password);
 
 
-exit;
-
 // выбираем несколько случайных профилей
-$profiles = array_rand(array_flip(get_profiles_in_db()), 2);
+// $profiles = array_rand(array_flip(get_profiles_in_db()), COUNT_RANDOM_PROFILES);
+
+// или один
+$profiles[] = array_rand(array_flip(get_profiles_in_db()));
 
 loginza("ITEMS");
 loginza("Старт парсинга объявлений из профилей пользователей");

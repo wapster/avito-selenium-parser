@@ -22,9 +22,7 @@ $account = get_random_account();
 $login = $account['login'];
 $password = $account['password'];
 $device = $account['device'];
-
 $driver = get_driver($device);
-
 authorization($driver, $login, $password);
 
 // Заходим в каждое объявление

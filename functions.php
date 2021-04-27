@@ -33,7 +33,7 @@ function empty_line() {
 function open_connect_db() {
     // Подключаемся к базе
     try {
-        $db = new PDO( 'mysql:host=localhost;dbname=avito', 'root', '' );
+        $db = new PDO( 'mysql:host=localhost;dbname=avito', 'root', '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION] );
         return $db;
         loginza("Подключение к БД успешно");
     } catch (PDOException $e) {
@@ -50,28 +50,6 @@ function close_connect_db() {
     loginza("Соединение с БД закрыто");
 }
 
-/*
-function get_driver() {
-    $host = 'http://localhost:4444';
-    $options = new ChromeOptions();
-    $options->addArguments(array(
-        '–disable-extensions',
-        'start-maximized',
-        'disable-popup-blocking',
-        'test-type'
-        ));
-
-    $devices = [ 'iPhone 6', 'Nexus 5', 'Nexus 6', 'Nexus 7', 'Nokia N9' ];
-    $random_device = $devices[array_rand($devices)];
-    $mobile_emulation = [ 'deviceName' => $random_device ];
-    $options->setExperimentalOption('mobileEmulation', $mobile_emulation);
-    $caps = DesiredCapabilities::chrome();
-    $caps->setCapability(ChromeOptions::CAPABILITY, $options);
-    $driver = RemoteWebDriver::create($host, $caps, 90000, 90000);
-
-    return $driver;
-}
-*/
 
 function get_driver($device) {
     $host = 'http://localhost:4444';
@@ -92,20 +70,6 @@ function get_driver($device) {
     return $driver;
 }
 
-
-/*
-function get_random_account($accounts_list) {
-    $i = array_rand($accounts_list);
-    $random_account = $accounts_list[$i];
-    $login = key($accounts_list[$i]);
-    $password = $random_account["$login"];
-
-    $account['login'] = $login;
-    $account['password'] = $password;
-
-    return $account;
-}
-*/
 
 // получить аккаунт
 function get_random_account() {
@@ -243,11 +207,12 @@ function get_profile_url ($url, $driver) {
         // ждем загрузки элементов
         // паузы, чтобы не попасть на капчу
         $driver->get($url);
+        // $driver->wait(10, 5000)->until( WebDriverExpectedCondition::visibilityOfElementLocated(WebDriverBy::linkText("Реклама на сайте")));
         sleep( rand(3,6) );
         $driver->executeScript("window.scrollTo(0, document.body.scrollHeight)");
         sleep( rand(3,6) );
         $profile_url = $driver->findElement(WebDriverBy::className("_2xsuC"))->getAttribute("href");
-        sleep( rand(3,6) );
+        sleep( rand(2,3) );
 
         $profile_url = mb_stristr($profile_url, '/user/');
         if ($profile_url !== false) {
@@ -255,8 +220,8 @@ function get_profile_url ($url, $driver) {
             $profile_url = 'https://m.avito.ru' . $profile_url[0];
             $profile = explode('?', $profile_url);
             $profile_id = $profile[0];
-            return $profile_url;
             loginza("ссылка на профиль получена " . $profile_url);
+            return $profile_url;
         }
     } catch (Exception\WebDriverException $e) {
         loginza("ОШИБКА получения ссылки на профиль пользователя");
@@ -276,8 +241,8 @@ function get_profile_url ($url, $driver) {
 function get_profile_id ($profile_url) {
     $profile = explode('/', $profile_url);
     $profile_id = $profile[4];
-    return $profile_id;
     loginza("id профиля: " . $profile_id);
+    return $profile_id;
 }
 
 
@@ -285,8 +250,8 @@ function get_profile_id ($profile_url) {
 function get_profiles_in_db() {
     $db = open_connect_db();
     $profiles_in_db = $db->query("SELECT url FROM `profiles`")->fetchAll(PDO::FETCH_COLUMN);
-    return $profiles_in_db;
     loginza("Из БД получены профили продавцов");
+    return $profiles_in_db;
 }
 
 
@@ -324,9 +289,8 @@ function get_count_active_items ($profile_url, $driver) {
         $element = $driver->findElement(WebDriverBy::className("Nh2WO"))->findElements(WebDriverBy::tagName("div"));
         $counter = $element[0]->getText();
         $counter = filter_var($counter, FILTER_SANITIZE_NUMBER_INT);
+        loginza("Кол-во активных объявлений продавца: " . $counter);
         return (int)$counter;
-
-        loginza("Кол-во активных объявлений продавца: " . $profile_url .  " = " . $counter);
     } catch (Exception\WebDriverException $e) {
         loginza("ОШИБКА: получение кол-ва активных объявлений продавца");
         loginza($e);
@@ -339,18 +303,23 @@ function get_list_active_items($profile_url, $count_active_items, $driver) {
     try {
         $driver->get($profile_url);
         $driver->wait(10, 2000)->until( WebDriverExpectedCondition::titleContains('Профиль пользователя') );
-        sleep(5);
+        sleep(rand(5, 10));
 
-        if ($count_active_items > 128) {
+        if ($count_active_items > 127) {
             $w = 16; // кол-во скроллов вниз, в мобильной версии показывается только 128 объявлений.
-        } else {
+        } 
+        
+        if ($count_active_items < 8) {
+            $w = 0;
+        }
+        else {
             $w = intdiv($count_active_items, 8) + 1; //кол-во скроллов вниз с учетом кол-ва объявлений продавца
         }
-
-        $i = 0;
+        loginza("Кол-во скроллов: " . $w);
+        $i = 1;
         while ( $i < $w ) {
             $driver->executeScript("window.scrollTo(0, document.body.scrollHeight)");
-            sleep(4);
+            sleep(5);
             $i++;
         }
         // получаем все ссылки на объявления
@@ -360,8 +329,8 @@ function get_list_active_items($profile_url, $count_active_items, $driver) {
             $list_active_items[] = $element->findElement(WebDriverBy::tagName("div"))->findElement(WebDriverBy::tagName("a"))->getAttribute("href");
         }
 
-        return $list_active_items;
         loginza("Список URL активных объявлений сформирован");
+        return $list_active_items;
     } catch (Exception\WebDriverException $e) {
         loginza("ОШИБКА: получение списка активных объявлений продавца");
         loginza($e);
@@ -378,11 +347,11 @@ function get_item_info ($item, $profile_id, $driver) {
     try {
         // переходим в объявление
         $driver->get($item);
-        sleep(rand(5,5));
+        sleep(rand(5,9));
 
         // скроллим в самый низ
-        $driver->executeScript("window.scrollTo(0, document.body.scrollHeight)");
-        sleep(rand(4,4));
+        // $driver->executeScript("window.scrollTo(0, document.body.scrollHeight)");
+        // sleep(rand(2,2));
 
 
         // ПАРСИМ ИНФ-ИЮ
@@ -402,6 +371,8 @@ function get_item_info ($item, $profile_id, $driver) {
 
         // Описание объявления
         $description = $driver->findElement(WebDriverBy::xpath("//*[@id='app']/div/div[2]/div/div[3]/div[1]/div/div"))->getText();
+        $description = mb_substr($description, 0, 700);
+        $description = preg_replace('/[^a-zA-Zа-яА-Я0-9,.*= ]/ui', '', $description);
 
         // Цена
         $price = $driver->findElement(WebDriverBy::className("_3CnHz"))->getText();
@@ -471,5 +442,212 @@ function item_insert_in_db($data) {
     } catch (\PDOException $e) {
         throw new \PDOException($e->getMessage(), (int)$e->getCode());
         loginza("Ошибка при добавлении объявления в БД");
+    }
+}
+
+
+
+// получаем аккаунт для скликивания телефона
+// с учетом времени, прошедшего с последнего скликивания
+function get_account_to_click() {
+    try {
+        $db = open_connect_db();
+        $sql = "SELECT * FROM `accounts`";
+        $accounts = $db->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+
+        // выбираем аккаунтЫ (их может быть несколько)
+        $accounts_to_click = [];
+        foreach ($accounts as $account) {
+            $now = date('Y-m-d H:i:s');
+            $last_click_time = $account['date_click'];
+            $hour_diff = round((strtotime($now) - strtotime($last_click_time))/3600, 1);
+            if ($hour_diff > ACCOUNT_TIME_CLICK) {
+                $accounts_to_click[] = $account;
+            } else {
+                loginza("Для аккаунта " . $account['login'] . " время клика на кнопку 'Позвонить' еще не настало");
+            }
+        }
+        $account = [];
+        $counter = count($accounts_to_click);
+        if ($counter > 0) {
+            $index = rand(0, $counter - 1);
+            $account = $accounts_to_click[$index];
+        }
+        loginza("Из БД получен АККАУНТ для парсинга телефонов");
+        return $account;
+    } catch (\PDOException $e) {
+        throw new \PDOException($e->getMessage(), (int)$e->getCode());
+        loginza("Ошибка при поиске аккаунтов в БД");
+        return $account = [];
+    }
+}
+
+
+
+// ищем записи в таблице с телефонами
+// для конкретного профиля
+function get_count_phones_for_profile($profile_id) {
+    try {
+        $db = open_connect_db();
+        $sql = "SELECT COUNT(`phone`) FROM `phones` WHERE `profile_id` = '$profile_id'";
+        $count = $db->query($sql)->fetch(PDO::FETCH_NUM);
+        loginza("Для профиля: " . $profile_id);
+        loginza("найдено телефонов: " . (int)$count);
+        return (int)$count[0];
+    } catch (\PDOException $e) {
+        throw new \PDOException($e->getMessage(), (int)$e->getCode());
+        loginza("ОШИБКА при подсчете кол-ва записей в таблице `phones`");
+        return (int)$count = 0;
+    }
+}
+
+
+
+// добавляем номер телефона продавца в таблицу телефонов
+function set_phone ($profile_id, $phone) {
+    $date_scrape = date('Y-m-d');
+
+    $data = [];
+    $data = [
+        'profile_id'  => $profile_id,
+        'phone'       => $phone,
+        'date_scrape' => $date_scrape
+    ];
+
+    $sql = "INSERT INTO `phones` (profile_id, phone, date_scrape) VALUES (:profile_id, :phone, :date_scrape)";
+    try {
+        $db = open_connect_db();
+        $stmt= $db->prepare($sql);
+        $stmt->execute($data);
+        loginza("Телефон " . $phone . " записан в БД");
+    } catch (\PDOException $e) {
+        throw new \PDOException($e->getMessage(), (int)$e->getCode());
+        loginza("ОШИБКА при записи в таблицу `phones`: " . $phone . " | " . $profile_id);
+    }
+
+}
+
+
+// получаем id записи последнего обновления телефона продавца
+function get_id_last_check_phone ($profile_id, $phone) {
+    try {
+        $db = open_connect_db();
+        $sql = "SELECT `id` FROM `phones` WHERE (`profile_id` = '$profile_id' AND `phone` = '$phone' ) ORDER BY `date_scrape` DESC LIMIT 1";
+        $id = $db->query($sql)->fetch(PDO::FETCH_COLUMN);
+        loginza("Найден ID записи последней проверки телефона у профиля " . $profile_id);
+        return (int)$id[0];
+    } catch (\PDOException $e) {
+        throw new \PDOException($e->getMessage(), (int)$e->getCode());
+        loginza("ОШИБКА при поиске ID в таблице `phones`");
+        return (int)$id = 0;
+    }
+}
+
+// обновляем номер телефона продавца в базе данных
+function update_date_scrape_to_phone($id) {
+    $new_date = date('Y-m-d');
+    // $sql = "UPDATE `phones` SET (`date_scrape` = :new_date) WHERE `id` = :id";
+    $sql = "UPDATE `phones` SET `date_scrape` = '$new_date' WHERE id = $id";
+    try {
+        $db = open_connect_db();
+        $db->exec($sql);
+        
+        // $stmt= $db->prepare($sql);
+        // $stmt->bindParam(':new_date', $new_date);
+        // $stmt->bindParam(':id', $id);
+        // $stmt->execute();
+        loginza("Запись ID " . $id . " обновлена");
+    } catch (\PDOException $e) {
+        throw new \PDOException($e->getMessage(), (int)$e->getCode());
+        loginza("ОШИБКА при обновлении даты в таблице `phones`: ");
+    }
+}
+
+
+// получаем свежую дату парсинга телефона для конкретного профиля продавца
+function get_date_scrape_phone ($profile_id) {
+    $sql = "SELECT `date_scrape` FROM `phones` WHERE `profile_id` = '$profile_id' ORDER BY `date_scrape` DESC";
+    try {
+        $db = open_connect_db();
+        $date = $db->query($sql)->fetch(PDO::FETCH_NUM);
+        loginza("Для профиля: " . $profile_id);
+        loginza("последняя дата парсинга телефона: " . $date[0]);
+        return $date[0];
+    } catch (\PDOException $e) {
+        throw new \PDOException($e->getMessage(), (int)$e->getCode());
+        loginza("ОШИБКА при получении даты парсинга телефона: " . $profile_id);
+    }
+
+}
+
+// получаем все телефоны продавца из базы
+function get_all_phones ($profile_id) {
+    $sql = "SELECT `phone` FROM `phones` WHERE `profile_id` = '$profile_id'";
+    try {
+        $db = open_connect_db();
+        $phones = $db->query($sql)->fetchAll(PDO::FETCH_COLUMN);
+        loginza("Для профиля: " . $profile_id);
+        loginza("найдены телефоны");
+        return $phones;
+    } catch (\PDOException $e) {
+        throw new \PDOException($e->getMessage(), (int)$e->getCode());
+        loginza("ОШИБКА при получении телефонов продавца " . $profile_id . " из базы данных");
+    }
+}
+
+
+// на странице с объявление кликаем
+// чтобы получить телефон продавца
+function click_to_phone($url, $driver) {
+    try {
+        $driver->get($url);
+        $driver->wait(20, 1000)->until( WebDriverExpectedCondition::visibilityOfElementLocated(WebDriverBy::linkText("Реклама на сайте")));
+        sleep(3);
+
+        $driver->findElement(WebDriverBy::xpath("//*[@id='app']/div/div[2]/div/div[2]/div/div[2]/div/div/div[1]/div/div/div[1]/a/span"))->click();
+        $driver->wait(20, 1000)->until(WebDriverExpectedCondition::visibilityOfElementLocated(WebDriverBy::xpath("//*[@id='modal']/div[2]/div/div[1]/span[1]")));
+        sleep(5);
+        $phone = $driver->findElement(WebDriverBy::xpath("//*[@id='modal']/div[2]/div/div[1]/span[2]"))->getText();
+        $phone = str_replace(['+7', ' ', '-'] , '', $phone);
+        return $phone;
+    } catch (Exception\NoSuchElementException $e) {
+        loginza("ОШИБКА получения телефона продавца на странице");
+        loginza("URL объявления: " . $url);
+        loginza($e);
+        return $phone = '';
+    }
+}
+
+// получаем телефон
+function get_phone($profile_url, $driver) {
+    $count_active_items = get_count_active_items($profile_url, $driver);
+    if ($count_active_items > 0) {
+        $list_active_items = get_list_active_items($profile_url, $count_active_items, $driver);
+        
+        $i = 0;
+        foreach ($list_active_items as $url) {
+            $i++;
+            // получаем телефон из объявления
+            $phone = click_to_phone($url, $driver);
+            if ($phone !== '') break;
+        }
+        loginza("Кол-во попыток запроса телефона: " . $i);
+        return $phone;
+    } else {
+        return $phone = '';
+    }
+}
+
+// обновляем дату скликивания телефона для аккаунта
+function update_date_click($login) {
+    $sql = "UPDATE `accounts` SET `date_click` = NOW() WHERE `login` = '$login'";
+    try {
+        $db = open_connect_db();
+        $db->exec($sql);
+        loginza("Дата клика по кнопке 'Позвонить' обновлена");
+        loginza("аккаунт: " . $login);
+    } catch (\PDOException $e) {
+        throw new \PDOException($e->getMessage(), (int)$e->getCode());
+        loginza("ОШИБКА при обновлении даты клика по кнопке 'Позвонить'");
     }
 }
