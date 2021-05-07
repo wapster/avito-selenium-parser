@@ -17,20 +17,10 @@ empty_line();
 // дата прошлого клика > ACCOUNT_TIME_CLICK
 $account = get_account_to_click();
 
-// $login = 'otinkofff@yandex.ru';
-// $login = 'serggorel345@gmail.com';
-$login = 'serggorel345@yandex.ru';
-
-// $password = 'jdS#jfd8d';
-// $password = 'ReXVhOG5ed69';
-$password = 'serggorel345';
-
-$device = 'iPhone 6';
-
 // авторизуемся в аккаунте
-// $login = $account['login'];
-// $password = $account['password'];
-// $device = $account['device'];
+$login = $account['login'];
+$password = $account['password'];
+$device = $account['device'];
 $driver = get_driver($device);
 authorization($driver, $login, $password);
 
