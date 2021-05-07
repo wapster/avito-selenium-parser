@@ -27,6 +27,9 @@ function loginza( $info ) {
 function empty_line() {
     $file = 'log.txt';
     file_put_contents( $file, PHP_EOL, FILE_APPEND);
+    file_put_contents( $file, '', FILE_APPEND);
+    file_put_contents( $file, PHP_EOL, FILE_APPEND);
+    // file_put_contents( $file, '', FILE_APPEND);
 }
 
 
@@ -179,6 +182,16 @@ function close_browser($driver) {
 // получаем все ссылки с главной страницы
 // return array()
 function get_links_from_index_page($driver) {
+    $driver->wait(10, 1000)->until( WebDriverExpectedCondition::visibilityOfElementLocated(WebDriverBy::linkText("Реклама на сайте")));
+
+    $i = 0;
+    $w = 1;
+    while ( $i < $w ) {
+        $driver->executeScript("window.scrollTo(0, document.body.scrollHeight)");
+        sleep(5);
+        $i++;
+    }
+
     $urls = $driver->findElements(WebDriverBy::className("_2g1Tz"));
 
     for ($i = 0; $i<count($urls); $i++) {
@@ -220,8 +233,14 @@ function get_profile_url ($url, $driver) {
             $profile_url = 'https://m.avito.ru' . $profile_url[0];
             $profile = explode('?', $profile_url);
             $profile_id = $profile[0];
-            loginza("ссылка на профиль получена " . $profile_url);
-            return $profile_url;
+            $lenght = strlen(get_profile_id($profile_url));
+
+            // отсекаем профили, длина id которых 64 символа
+            // такие профили - подменные, в объявлениях по продаже авто и недвижимости
+            if ($lenght < 40) {
+                loginza("ссылка на профиль получена " . $profile_url);
+                return $profile_url;
+            } else return $profile_url = '';
         }
     } catch (Exception\WebDriverException $e) {
         loginza("ОШИБКА получения ссылки на профиль пользователя");
@@ -241,7 +260,7 @@ function get_profile_url ($url, $driver) {
 function get_profile_id ($profile_url) {
     $profile = explode('/', $profile_url);
     $profile_id = $profile[4];
-    loginza("id профиля: " . $profile_id);
+    // loginza("id профиля: " . $profile_id);
     return $profile_id;
 }
 
@@ -271,7 +290,7 @@ function profile_insert_to_db ($profile_id, $profile_url) {
         $db = open_connect_db();
         $stmt= $db->prepare($sql);
         $stmt->execute($data);
-        loginza("Профиль " . $profile_id . " записан в БД");
+        // loginza("Профиль " . $profile_id . " записан в БД");
     } catch (\PDOException $e) {
         throw new \PDOException($e->getMessage(), (int)$e->getCode());
         loginza("ОШИБКА записи профиля в БД. Профиль " . $profile_id);
@@ -284,8 +303,9 @@ function get_count_active_items ($profile_url, $driver) {
     try {
         $driver->get($profile_url);
         $driver->wait(10, 2000)->until( WebDriverExpectedCondition::titleContains('Профиль пользователя') );
+        $driver->wait(10, 2000)->until( WebDriverExpectedCondition::visibilityOfElementLocated(WebDriverBy::className("Nh2WO")));
         // $driver->wait(10, 1000)->until( WebDriverExpectedCondition::visibilityOfElementLocated(WebDriverBy::linkText("Реклама на сайте")));
-        sleep(5);
+        sleep(10);
         $element = $driver->findElement(WebDriverBy::className("Nh2WO"))->findElements(WebDriverBy::tagName("div"));
         $counter = $element[0]->getText();
         $counter = filter_var($counter, FILTER_SANITIZE_NUMBER_INT);
@@ -305,9 +325,9 @@ function get_list_active_items($profile_url, $count_active_items, $driver) {
         $driver->wait(10, 2000)->until( WebDriverExpectedCondition::titleContains('Профиль пользователя') );
         sleep(rand(5, 10));
 
-        if ($count_active_items > 127) {
-            $w = 16; // кол-во скроллов вниз, в мобильной версии показывается только 128 объявлений.
-        } 
+        // if ($count_active_items > 128) {
+            // $w = 16; // кол-во скроллов вниз, в мобильной версии показывается только 128 объявлений ???
+        // }
         
         if ($count_active_items < 8) {
             $w = 0;
@@ -329,12 +349,23 @@ function get_list_active_items($profile_url, $count_active_items, $driver) {
             $list_active_items[] = $element->findElement(WebDriverBy::tagName("div"))->findElement(WebDriverBy::tagName("a"))->getAttribute("href");
         }
 
-        loginza("Список URL активных объявлений сформирован");
-        return $list_active_items;
+        $urls = [];
+        // Получаем все ссылки из нужного региона(/kurgan/)
+        foreach($list_active_items as $link) {
+            $pos = strpos($link, CITY);
+            if ($pos === false) {
+                // debug('');
+            } else {
+                $urls[] = $link;
+            }
+        }
+
+        // loginza("Список URL активных объявлений сформирован");
+        return $urls;
     } catch (Exception\WebDriverException $e) {
         loginza("ОШИБКА: получение списка активных объявлений продавца");
         loginza($e);
-        return $list_active_items = [];
+        return $urls = [];
     }
 
     
@@ -397,8 +428,8 @@ function get_item_info ($item, $profile_id, $driver) {
         $data['name'] = $name;
         $data['date_scrape'] = $date_scrape;
         
+        // loginza("Страница с объявлением № " . $item_id. " спарсена");
         return $data;
-        loginza("Страница с объявлением № " . $item_id. "спарсена");
     } catch (Exception\WebDriverException $e) {
         loginza("ОШИБКА при парсинге страницы с объявлением");
         loginza($item);
@@ -409,7 +440,7 @@ function get_item_info ($item, $profile_id, $driver) {
 }
 
 
-// 
+// Список всех объявлений продавца в базе данных
 function get_list_items_in_db($profile_id) {
     try {
         $db = open_connect_db();
@@ -426,6 +457,24 @@ function get_list_items_in_db($profile_id) {
 }
 
 
+// Список ВСЕХ объявлений в базе данных
+function get_url_list_all_items() {
+    try {
+        $db = open_connect_db();
+        $sql = "SELECT `url` FROM `items`";
+        $list = $db->query($sql)->fetchAll(PDO::FETCH_COLUMN);
+        return $list;
+        loginza("Из БД получен список объявлений пользователя");
+    } catch (\PDOException $e) {
+        throw new \PDOException($e->getMessage(), (int)$e->getCode());
+        loginza("Ошибка при поиске объявлений в БД");
+        return $list = 'error';
+    }
+
+}
+
+
+
 
 // запись инф-ции об объявлении в базу
 function item_insert_in_db($data) {
@@ -438,7 +487,7 @@ function item_insert_in_db($data) {
         $db = open_connect_db();
         $stmt= $db->prepare($sql);
         $stmt->execute($data);
-        loginza("Объявление добавлено в БД. ID - " . $data['item_id']);
+        // loginza("Объявление добавлено в БД. ID - " . $data['item_id']);
     } catch (\PDOException $e) {
         throw new \PDOException($e->getMessage(), (int)$e->getCode());
         loginza("Ошибка при добавлении объявления в БД");
@@ -492,7 +541,7 @@ function get_count_phones_for_profile($profile_id) {
         $sql = "SELECT COUNT(`phone`) FROM `phones` WHERE `profile_id` = '$profile_id'";
         $count = $db->query($sql)->fetch(PDO::FETCH_NUM);
         loginza("Для профиля: " . $profile_id);
-        loginza("найдено телефонов: " . (int)$count);
+        loginza("найдено телефонов: " . (int)$count[0]);
         return (int)$count[0];
     } catch (\PDOException $e) {
         throw new \PDOException($e->getMessage(), (int)$e->getCode());
@@ -602,9 +651,10 @@ function click_to_phone($url, $driver) {
     try {
         $driver->get($url);
         $driver->wait(20, 1000)->until( WebDriverExpectedCondition::visibilityOfElementLocated(WebDriverBy::linkText("Реклама на сайте")));
-        sleep(3);
+        sleep(5);
 
-        $driver->findElement(WebDriverBy::xpath("//*[@id='app']/div/div[2]/div/div[2]/div/div[2]/div/div/div[1]/div/div/div[1]/a/span"))->click();
+        // $driver->findElement(WebDriverBy::xpath("//*[@id='app']/div/div[2]/div/div[2]/div/div[2]/div/div/div[1]/div/div/div[1]/a/span"))->click();
+        $driver->findElement(WebDriverBy::xpath("//*[@id='app']/div/div[2]/div/div[2]/div/div[2]/div/div/div[1]/div/div/div[1]/button/span"))->click();
         $driver->wait(20, 1000)->until(WebDriverExpectedCondition::visibilityOfElementLocated(WebDriverBy::xpath("//*[@id='modal']/div[2]/div/div[1]/span[1]")));
         sleep(5);
         $phone = $driver->findElement(WebDriverBy::xpath("//*[@id='modal']/div[2]/div/div[1]/span[2]"))->getText();

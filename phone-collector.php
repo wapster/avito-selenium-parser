@@ -13,9 +13,43 @@ require_once('settings.php');
 
 empty_line();
 
+function account_to_click() {
+    try {
+        $db = open_connect_db();
+        $sql = "SELECT * FROM `accounts` WHERE `id` = 8";
+        $accounts = $db->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+        
+        // выбираем аккаунтЫ (их может быть несколько)
+        $accounts_to_click = [];
+        foreach ($accounts as $account) {
+            $now = date('Y-m-d H:i:s');
+            $last_click_time = $account['date_click'];
+            $hour_diff = round((strtotime($now) - strtotime($last_click_time))/3600, 1);
+            if ($hour_diff > ACCOUNT_TIME_CLICK) {
+                $accounts_to_click[] = $account;
+            } else {
+                loginza("Для аккаунта " . $account['login'] . " время клика на кнопку 'Позвонить' еще не настало");
+            }
+        }
+        $account = [];
+        $counter = count($accounts_to_click);
+        if ($counter > 0) {
+            $index = rand(0, $counter - 1);
+            $account = $accounts_to_click[$index];
+            loginza("Из БД получен АККАУНТ для парсинга телефонов");
+        }
+        return $account;
+    } catch (\PDOException $e) {
+        throw new \PDOException($e->getMessage(), (int)$e->getCode());
+        loginza("Ошибка при поиске аккаунтов в БД");
+        return $account = [];
+    }
+}
+
+
 // выбираем аккаунт с которого будем кликать телефон
 // дата прошлого клика > ACCOUNT_TIME_CLICK
-$account = get_account_to_click();
+$account = account_to_click();
 
 // авторизуемся в аккаунте
 $login = $account['login'];
@@ -38,11 +72,14 @@ $profile_id = get_profile_id($profile_url);
 // получаем кол-во телефонов продавца в базе данных
 $count_phones_for_profile = get_count_phones_for_profile($profile_id);
 
+
 // добавляем запись в таблицу с телефонами
 if ($count_phones_for_profile == 0) {
     $phone = get_phone($profile_url, $driver);
-    set_phone($profile_id, $phone);
-    update_date_click($login);
+    if ($phone !== '') {
+        set_phone($profile_id, $phone);
+        update_date_click($login);
+    }
 }
 
 // если к профилю уже "привязаны" телефоны
@@ -63,6 +100,14 @@ if ($count_phones_for_profile > 0) {
 
             // далее вызов функции для считывания телефона
             $phone = get_phone($profile_url, $driver);
+
+            if ($phone == '') {
+                loginza("ОШИБКА: Не удалось получить номер телефона продавца");
+                close_connect_db();
+                close_browser($driver);
+                exit;
+            }
+
             $new_phone_seller = [$phone]; // телефон, к-ый собираемся добавлять
 
             // обновляем дату клика по кнопке 'Позвонить'
@@ -86,12 +131,18 @@ if ($count_phones_for_profile > 0) {
             }
         } else {
             loginza("Для аккаунта " . $login . " время парсинга телефона еще не настало");
+            
+            close_connect_db();
+            close_browser($driver);
             exit;
         }
 
     } else {
         loginza("ОШИБКА сравнения даты: " . $profile_id);
         loginza("дата: " . $date_scrape . " и " . $now);
+        
+        close_connect_db();
+        close_browser($driver);
         exit;
     }
 
@@ -99,5 +150,8 @@ if ($count_phones_for_profile > 0) {
 
 }
 
+
 close_connect_db();
 close_browser($driver);
+
+empty_line();
